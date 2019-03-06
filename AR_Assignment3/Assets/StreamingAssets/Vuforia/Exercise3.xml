@@ -1,6 +1,8 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <QCARConfig xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="qcar_config.xsd">
   <Tracking>
+    <ImageTarget name="finger_drawing_template" size="27.500000 19.449228" />
+    <ImageTarget name="alphabet" size="25.500000 19.439463" />
     <ImageTarget name="terrain_controller" size="9.300000 9.245455" />
     <ImageTarget name="blue" size="9.300000 6.195231" />
     <ImageTarget name="Red" size="9.300000 6.510000" />

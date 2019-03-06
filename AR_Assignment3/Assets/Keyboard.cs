@@ -8,15 +8,20 @@ using Vuforia;
 
 public class Keyboard : MonoBehaviour
 {
-    private Mat cameraImageMat;
+    private Mat _cameraImageMat;
     public Transform FingerPlane;
+    public Transform AlphabetTarget;
+    public List<Transform> Points;
+    public Transform Send;
+
+
     public TextMesh Text;
 
     public Camera Camera;
     // Start is called before the first frame update
     void Start()
     {
-        Text.text = "This is a test";
+   
     }
 
     // Update is called once per frame
@@ -26,43 +31,80 @@ public class Keyboard : MonoBehaviour
 
         Image cameraImage = CameraDevice.Instance.GetCameraImage(Image.PIXEL_FORMAT.RGBA8888);
 
-        if (cameraImage != null)
+        if (cameraImage == null) return;
+        if (_cameraImageMat == null)
         {
-            if (cameraImageMat == null)
-            {
-                //First frame -> generate Mat with same dimensions as camera feed
-                cameraImageMat = new Mat(cameraImage.Height, cameraImage.Width, CvType.CV_8UC4);
-            }
-            cameraImageMat.put(0, 0, cameraImage.Pixels); // transferring image data to Mat
-
-            var fingerColorMat = FindFingerColor();
-            try
-            {
-                var fingerTip = FindFingerTip(fingerColorMat);
-                var screenToWorldPoint = Camera.ScreenToWorldPoint(fingerTip);
-                screenToWorldPoint.y = -screenToWorldPoint.y;
-                FingerPlane.position = screenToWorldPoint;
-            }
-            catch {}
-            
-
-
-
-            MatDisplay.DisplayMat(cameraImageMat, MatDisplaySettings.FULL_BACKGROUND);
+            //First frame -> generate Mat with same dimensions as camera feed
+            _cameraImageMat = new Mat(cameraImage.Height, cameraImage.Width, CvType.CV_8UC4);
         }
+        _cameraImageMat.put(0, 0, cameraImage.Pixels); // transferring image data to Mat
 
+        var fingerColorMat = FindFingerColor();
 
+        var screenPosSend = Camera.WorldToScreenPoint(Send.position);
+        var value = fingerColorMat.get((int)screenPosSend.x, (int)screenPosSend.y);
 
+        // Check if value at finger is white (which means that finger is present)
 
-        if (Input.GetKeyDown(KeyCode.Space))
-            Text.text = Text.text.Remove(Text.text.Length - 1);
+        try
+        {
+            var fingerPointInWorldSpace = FingerPointInWorldSpace(fingerColorMat);
+            FingerPlane.position = fingerPointInWorldSpace;
+
+            if ((int)value[0] > 250)
+            {
+                var oldDistance = float.MaxValue;
+                var letter = string.Empty;
+
+                var maxDistance = Vector3.Distance(Camera.WorldToScreenPoint(Points[0].position),
+                    Camera.WorldToScreenPoint(Points[7].position));
+
+                Points.ForEach(x =>
+                {
+                    var worldToScreenPoint = Camera.WorldToScreenPoint(x.position);
+                    var distance = Vector3.Distance(Camera.WorldToScreenPoint(fingerPointInWorldSpace),
+                        worldToScreenPoint);
+                    if (!(distance < oldDistance) || !(distance < maxDistance)) return;
+                    letter = x.name;
+                    oldDistance = distance;
+
+                });
+
+                switch (letter)
+                {
+                    case "BackSpace":
+                        Text.text = Text.text.Remove(Text.text.Length - 1);
+                        break;
+                    case "Space":
+                        Text.text += " ";
+                        break;
+                    default:
+                        Text.text += letter;
+                        break;
+                }
+            }
+        }
+        catch
+        {
+        }
+        
+        MatDisplay.DisplayMat(_cameraImageMat, MatDisplaySettings.FULL_BACKGROUND);
+
+    }
+
+    private Vector3 FingerPointInWorldSpace(Mat fingerColorMat)
+    {
+        var fingerTip = FindFingerTip(fingerColorMat);
+        var screenToWorldPoint = Camera.ScreenToWorldPoint(fingerTip);
+        screenToWorldPoint.y = -screenToWorldPoint.y;
+        return screenToWorldPoint;
     }
 
     private Mat FindFingerColor()
     {
         var frameHsv = new Mat();
         // Convert from BGR to HSV colorspace
-        Imgproc.cvtColor(cameraImageMat, frameHsv, Imgproc.COLOR_RGB2HSV);
+        Imgproc.cvtColor(_cameraImageMat, frameHsv, Imgproc.COLOR_RGB2HSV);
         // Detect the object based on HSV Range Values
         var frameThreshold = new Mat();
         Core.inRange(frameHsv, new Scalar(0, 30, 60), new Scalar(20, 150, 255), frameThreshold);
@@ -83,7 +125,7 @@ public class Keyboard : MonoBehaviour
             {
                 var value = fingerColorMat.get(i, j);
                 if ((int) value[0] == 255)
-                    return new Vector3(j, i, 1);
+                    return new Vector3(j, i, 2);
             }
         }
         throw new Exception("Finger tip not found");
