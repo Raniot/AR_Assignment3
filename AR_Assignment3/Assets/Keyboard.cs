@@ -11,17 +11,24 @@ public class Keyboard : MonoBehaviour
     private Mat _cameraImageMat;
     public Transform FingerPlane;
     public Transform AlphabetTarget;
-    public List<Transform> Points;
+    public List<Transform> KeyboardPos;
     public Transform Send;
+    private readonly WaitForSeconds _typingDelay = new WaitForSeconds(0.75f);
 
 
     public TextMesh Text;
 
     public Camera Camera;
+
+    private bool _keyPressed;
+
     // Start is called before the first frame update
     void Start()
     {
-   
+        for (int i = 0; i < 28; i++)
+        {
+            KeyboardPos.Add(transform.GetChild(i));
+        }
     }
 
     // Update is called once per frame
@@ -39,10 +46,22 @@ public class Keyboard : MonoBehaviour
         }
         _cameraImageMat.put(0, 0, cameraImage.Pixels); // transferring image data to Mat
 
+        if (AlphabetTarget.GetComponent<ImageTargetBehaviour>().CurrentStatus != TrackableBehaviour.Status.TRACKED)
+        {
+            MatDisplay.DisplayMat(_cameraImageMat, MatDisplaySettings.FULL_BACKGROUND);
+            return;
+        }
         var fingerColorMat = FindFingerColor();
+        var test = Send.position;
+        test.y = -test.y;
+        var screenPosSend = Camera.WorldToScreenPoint(test);
+        var value = fingerColorMat.get((int)screenPosSend.y, (int)screenPosSend.x);
 
-        var screenPosSend = Camera.WorldToScreenPoint(Send.position);
-        var value = fingerColorMat.get((int)screenPosSend.x, (int)screenPosSend.y);
+        //Debug.Log($"Circle: {screenPosSend}");
+        //Debug.Log($"backspace: {Camera.WorldToScreenPoint(KeyboardPos[27].position)}");
+        //Debug.Log($"backspace: {Camera.WorldToScreenPoint(KeyboardPos[20].position)}");
+
+        //Debug.Log($"{value[0]}");
 
         // Check if value at finger is white (which means that finger is present)
 
@@ -51,25 +70,26 @@ public class Keyboard : MonoBehaviour
             var fingerPointInWorldSpace = FingerPointInWorldSpace(fingerColorMat);
             FingerPlane.position = fingerPointInWorldSpace;
 
-            if ((int)value[0] > 250)
+            if ((int)value[0] > 250 && !_keyPressed)
             {
+                StartCoroutine(DelayTyping());
                 var oldDistance = float.MaxValue;
                 var letter = string.Empty;
 
-                var maxDistance = Vector3.Distance(Camera.WorldToScreenPoint(Points[0].position),
-                    Camera.WorldToScreenPoint(Points[7].position));
+                var maxDistance = Vector3.Distance(Camera.WorldToScreenPoint(KeyboardPos[0].position),
+                    Camera.WorldToScreenPoint(KeyboardPos[7].position));
 
-                Points.ForEach(x =>
+                KeyboardPos.ForEach(x =>
                 {
                     var worldToScreenPoint = Camera.WorldToScreenPoint(x.position);
                     var distance = Vector3.Distance(Camera.WorldToScreenPoint(fingerPointInWorldSpace),
                         worldToScreenPoint);
-                    if (!(distance < oldDistance) || !(distance < maxDistance)) return;
+                    if (distance > oldDistance || distance > maxDistance) return;
                     letter = x.name;
                     oldDistance = distance;
 
                 });
-
+                Debug.Log(letter);
                 switch (letter)
                 {
                     case "BackSpace":
@@ -109,7 +129,7 @@ public class Keyboard : MonoBehaviour
         var frameThreshold = new Mat();
         Core.inRange(frameHsv, new Scalar(0, 30, 60), new Scalar(20, 150, 255), frameThreshold);
 
-        var kernelSize = Mat.ones(20, 20, CvType.CV_8U);
+        var kernelSize = Mat.ones(10, 10, CvType.CV_8U);
         var frameMorphClose = new Mat();
         Imgproc.morphologyEx(frameThreshold, frameMorphClose, Imgproc.MORPH_CLOSE, kernelSize);
         var frameMorphOpen = new Mat();
@@ -129,5 +149,14 @@ public class Keyboard : MonoBehaviour
             }
         }
         throw new Exception("Finger tip not found");
+    }
+
+
+    private IEnumerator DelayTyping()
+    {
+        _keyPressed = true;
+        yield return _typingDelay;
+        _keyPressed = false;
+
     }
 }
