@@ -314,7 +314,7 @@ namespace OpenCVForUnity.UnityUtils
         /// <param name="height">Image height.</param>
         /// <param name="fovV">Vertical field of view.</param>
         /// <returns>
-        /// Camera matrix values. (fx = matrx.m00, fy = matrx.m11, cx = matrx.m02, cy = matrx.m12)
+        /// Cam matrix values. (fx = matrx.m00, fy = matrx.m11, cx = matrx.m02, cy = matrx.m12)
         /// </returns>
         public static Matrix4x4 CameraMatrixValuesFromCalculateProjectionMatrix (Matrix4x4 projectionMatrix, float width, float height, float fovV)
         {
