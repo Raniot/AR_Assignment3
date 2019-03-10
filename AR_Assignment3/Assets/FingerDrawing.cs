@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections;
 using System.Collections.Generic;
+using System.Linq;
 using OpenCVForUnity.Calib3dModule;
 using OpenCVForUnity.CoreModule;
 using OpenCVForUnity.ImgprocModule;
@@ -29,10 +30,8 @@ public class FingerDrawing : MonoBehaviour
     void Start()
     {
         //Anders magic number
-        //_drawingPlaceMat = new Mat(Cam.pixelHeight,Cam.pixelWidth,CvType.CV_8UC4);
         _drawingPlaceMat = new Mat(100, 150, CvType.CV_8UC4);
-        _drawingPlaceMat.setTo(new Scalar(100, 200, 0));
-        //_drawingPlaceMat = MatDisplay.LoadRGBATexture("muscle_tex.png");
+        _drawingPlaceMat.setTo(new Scalar(255, 255, 255));
         _imagePoints = new MatOfPoint2f();
         _imagePoints.alloc(4);
     }
@@ -58,6 +57,52 @@ public class FingerDrawing : MonoBehaviour
             return;
         }
 
+        FindHomographyPoints(out var matDst, out var matObj);
+        var H = Calib3d.findHomography(matObj, matDst);
+
+        try
+        {
+            var bWMat = GetBWSkinColor();
+            var fingerTipCoor = FindFingerTip(bWMat);
+            var fingerPointInWorldSpace = FingerPointInWorldSpace(fingerTipCoor);
+            FingerPlane.position = fingerPointInWorldSpace;
+
+            var colorPixelValue = FindPixelValue(_cameraImageMat, Color.position);
+            var drawPixelValue = FindPixelValue(bWMat, Draw.position);
+
+            if ((int)drawPixelValue.First() == 255)
+            {
+                //Debug.Log($"{colorPixelValue[0]}, {colorPixelValue[1]}, {colorPixelValue[2]}");
+                //Debug.Log("Found Draw");
+                //draw at finger pos
+                
+                var camMask = PaintCircle(fingerTipCoor);
+                DrawMaskOnCanvas(camMask, H, colorPixelValue);
+            }
+        }
+        catch
+        {
+        }
+        
+        var blendTex = BlendMats(H, _cameraImageMat, _drawingPlaceMat);
+
+        MatDisplay.DisplayMat(blendTex, MatDisplaySettings.FULL_BACKGROUND);
+    }
+
+    private Mat BlendMats(Mat homography, Mat cameraImageMat, Mat drawingPlaceMat)
+    {
+        var warpedMat = new Mat();
+        Imgproc.warpPerspective(drawingPlaceMat, warpedMat, homography.inv(), cameraImageMat.size(),
+            Imgproc.INTER_LINEAR);
+        warpedMat.convertTo(warpedMat, cameraImageMat.type());
+
+        var blendTex = new Mat();
+        Core.addWeighted(cameraImageMat, 0.95f, warpedMat, 0.4f, 0.0, blendTex);
+        return blendTex;
+    }
+
+    private void FindHomographyPoints(out MatOfPoint2f matDst, out  MatOfPoint2f matObj)
+    {
         var corner1ScreenPoint = Cam.WorldToScreenPoint(Corner1.position);
         var corner2ScreenPoint = Cam.WorldToScreenPoint(Corner2.position);
         var corner3ScreenPoint = Cam.WorldToScreenPoint(Corner3.position);
@@ -68,7 +113,8 @@ public class FingerDrawing : MonoBehaviour
         corner3ScreenPoint.y = Cam.pixelHeight - corner3ScreenPoint.y;
         corner4ScreenPoint.y = Cam.pixelHeight - corner4ScreenPoint.y;
 
-        var srcPoints = new List<Point> {
+        var srcPoints = new List<Point>
+        {
             new Point(corner2ScreenPoint.x, corner2ScreenPoint.y),
             new Point(corner1ScreenPoint.x, corner1ScreenPoint.y),
             new Point(corner4ScreenPoint.x, corner4ScreenPoint.y),
@@ -82,65 +128,67 @@ public class FingerDrawing : MonoBehaviour
             new Point(0, 0),
         };
 
-        var matObj = new MatOfPoint2f(srcPoints.ToArray());
-        var matDst = new MatOfPoint2f(dstPoints.ToArray());
-        var H = Calib3d.findHomography(matObj, matDst);
+        matObj = new MatOfPoint2f(srcPoints.ToArray());
+        matDst = new MatOfPoint2f(dstPoints.ToArray());
+    }
 
-        try
-        {
-            var fingerColorMat = FindFingerColor();
-            var fingerPointInWorldSpace = FingerPointInWorldSpace(fingerColorMat);
-            FingerPlane.position = fingerPointInWorldSpace;
-
-
-            var colorPixelValue = FindPixelValue(_cameraImageMat, Color.position);
-            var drawPixelValue = FindPixelValue(fingerColorMat, Draw.position);
-
-            if ((int)drawPixelValue[0] == 255)
-            {
-                Debug.Log($"{colorPixelValue[0]}, {colorPixelValue[1]}, {colorPixelValue[2]}");
-                Debug.Log("Found Draw");
-                //draw at finger pos
-                
-                var fingerScreenPoint = Cam.WorldToScreenPoint(fingerPointInWorldSpace);
-                fingerScreenPoint.y = Cam.pixelHeight - fingerScreenPoint.y;
-                var camImg2 = new Mat(_cameraImageMat.size(),_cameraImageMat.type());
-                camImg2.setTo(new Scalar(0,0,0));
-                camImg2.put((int)fingerScreenPoint.y, (int)fingerScreenPoint.x, 255,255,255,255);
-                camImg2.put((int)fingerScreenPoint.y, (int)fingerScreenPoint.x+1, 255,255,255,255);
-                camImg2.put((int)fingerScreenPoint.y, (int)fingerScreenPoint.x+2, 255,255,255,255);
-                camImg2.put((int)fingerScreenPoint.y, (int)fingerScreenPoint.x+3, 255,255,255,255);
-                camImg2.put((int)fingerScreenPoint.y+1, (int)fingerScreenPoint.x, 255,255,255, 255);
-                camImg2.put((int)fingerScreenPoint.y+1, (int)fingerScreenPoint.x + 1, 255,255,255, 255);
-                camImg2.put((int)fingerScreenPoint.y+1, (int)fingerScreenPoint.x+2, 255,255,255, 255);
-                camImg2.put((int)fingerScreenPoint.y+1, (int)fingerScreenPoint.x+3, 255,255,255, 255);
-                camImg2.put((int)fingerScreenPoint.y + 2, (int)fingerScreenPoint.x,  255, 255, 255, 255);
-                camImg2.put((int)fingerScreenPoint.y+2, (int)fingerScreenPoint.x + 1, 255,255,255, 255);
-                camImg2.put((int)fingerScreenPoint.y+2, (int)fingerScreenPoint.x+2, 255,255,255, 255);
-                camImg2.put((int)fingerScreenPoint.y+2, (int)fingerScreenPoint.x+3, 255,255,255, 255);
-
-                //_drawingPlaceMat.put((int)fingerScreenPoint.x, (int)fingerScreenPoint.y, colorPixelValue);
-
-                var mask = new Mat();
-                Imgproc.warpPerspective(camImg2, mask, H, _drawingPlaceMat.size(),
-                    Imgproc.INTER_LINEAR);
-                mask.convertTo(mask, CvType.CV_8U);
-                _drawingPlaceMat.setTo(new Scalar(colorPixelValue[0], colorPixelValue[1], colorPixelValue[2], 255), mask);
-            }
-        }
-        catch
-        {
-        }
-        
-        var warpedMat = new Mat();
-        Imgproc.warpPerspective(_drawingPlaceMat, warpedMat, H.inv(), _cameraImageMat.size(),
+    private void DrawMaskOnCanvas(Mat camMask, Mat H, double[] colorPixelValue)
+    {
+        var mask = new Mat();
+        Imgproc.warpPerspective(camMask, mask, H, _drawingPlaceMat.size(),
             Imgproc.INTER_LINEAR);
-        warpedMat.convertTo(warpedMat, _cameraImageMat.type());
+        mask.convertTo(mask, CvType.CV_8U);
+        _drawingPlaceMat.setTo(new Scalar(colorPixelValue[0], colorPixelValue[1], colorPixelValue[2], 255), mask);
+    }
 
-        var blendTex = new Mat();
-        Core.addWeighted(_cameraImageMat, 0.95f, warpedMat, 0.4f, 0.0, blendTex);
+    private Mat PaintCircle(Vector3 fingerScreenPoint)
+    {
+        var camImg2 = new Mat(_cameraImageMat.size(), _cameraImageMat.type());
+        camImg2.setTo(new Scalar(0, 0, 0));
+        camImg2.put((int) fingerScreenPoint.y, (int) fingerScreenPoint.x, 255, 255, 255, 255);
+        camImg2.put((int) fingerScreenPoint.y, (int) fingerScreenPoint.x + 1, 255, 255, 255, 255);
+        camImg2.put((int) fingerScreenPoint.y, (int) fingerScreenPoint.x - 1, 255, 255, 255, 255);
+        camImg2.put((int) fingerScreenPoint.y, (int) fingerScreenPoint.x - 2, 255, 255, 255, 255);
+        camImg2.put((int) fingerScreenPoint.y, (int) fingerScreenPoint.x + 2, 255, 255, 255, 255);
+        camImg2.put((int) fingerScreenPoint.y + 1, (int) fingerScreenPoint.x, 255, 255, 255, 255);
+        camImg2.put((int) fingerScreenPoint.y + 1, (int) fingerScreenPoint.x + 1, 255, 255, 255, 255);
+        camImg2.put((int) fingerScreenPoint.y + 1, (int) fingerScreenPoint.x - 1, 255, 255, 255, 255);
+        camImg2.put((int) fingerScreenPoint.y + 1, (int) fingerScreenPoint.x + 2, 255, 255, 255, 255);
+        camImg2.put((int) fingerScreenPoint.y + 1, (int) fingerScreenPoint.x - 2, 255, 255, 255, 255);
+        camImg2.put((int) fingerScreenPoint.y - 1, (int) fingerScreenPoint.x, 255, 255, 255, 255);
+        camImg2.put((int) fingerScreenPoint.y - 1, (int) fingerScreenPoint.x - 1, 255, 255, 255, 255);
+        camImg2.put((int) fingerScreenPoint.y - 1, (int) fingerScreenPoint.x + 1, 255, 255, 255, 255);
+        camImg2.put((int) fingerScreenPoint.y - 1, (int) fingerScreenPoint.x + 2, 255, 255, 255, 255);
+        camImg2.put((int) fingerScreenPoint.y - 1, (int) fingerScreenPoint.x - 2, 255, 255, 255, 255);
+        camImg2.put((int) fingerScreenPoint.y + 2, (int) fingerScreenPoint.x, 255, 255, 255, 255);
+        camImg2.put((int) fingerScreenPoint.y + 2, (int) fingerScreenPoint.x + 1, 255, 255, 255, 255);
+        camImg2.put((int) fingerScreenPoint.y + 2, (int) fingerScreenPoint.x - 1, 255, 255, 255, 255);
+        camImg2.put((int) fingerScreenPoint.y + 2, (int) fingerScreenPoint.x + 2, 255, 255, 255, 255);
+        camImg2.put((int) fingerScreenPoint.y + 2, (int) fingerScreenPoint.x - 2, 255, 255, 255, 255);
+        camImg2.put((int) fingerScreenPoint.y - 2, (int) fingerScreenPoint.x, 255, 255, 255, 255);
+        camImg2.put((int) fingerScreenPoint.y - 2, (int) fingerScreenPoint.x - 1, 255, 255, 255, 255);
+        camImg2.put((int) fingerScreenPoint.y - 2, (int) fingerScreenPoint.x + 1, 255, 255, 255, 255);
+        camImg2.put((int) fingerScreenPoint.y - 2, (int) fingerScreenPoint.x + 2, 255, 255, 255, 255);
+        camImg2.put((int) fingerScreenPoint.y - 2, (int) fingerScreenPoint.x - 2, 255, 255, 255, 255);
 
-        MatDisplay.DisplayMat(blendTex, MatDisplaySettings.FULL_BACKGROUND);
+        camImg2.put((int) fingerScreenPoint.y - 3, (int) fingerScreenPoint.x, 255, 255, 255, 255);
+        camImg2.put((int) fingerScreenPoint.y - 3, (int) fingerScreenPoint.x - 1, 255, 255, 255, 255);
+        camImg2.put((int) fingerScreenPoint.y - 3, (int) fingerScreenPoint.x + 1, 255, 255, 255, 255);
+        camImg2.put((int) fingerScreenPoint.y + 3, (int) fingerScreenPoint.x, 255, 255, 255, 255);
+        camImg2.put((int) fingerScreenPoint.y + 3, (int) fingerScreenPoint.x - 1, 255, 255, 255, 255);
+        camImg2.put((int) fingerScreenPoint.y + 3, (int) fingerScreenPoint.x + 1, 255, 255, 255, 255);
+        camImg2.put((int) fingerScreenPoint.y, (int) fingerScreenPoint.x - 3, 255, 255, 255, 255);
+        camImg2.put((int) fingerScreenPoint.y - 1, (int) fingerScreenPoint.x - 3, 255, 255, 255, 255);
+        camImg2.put((int) fingerScreenPoint.y + 1, (int) fingerScreenPoint.x - 3, 255, 255, 255, 255);
+        camImg2.put((int) fingerScreenPoint.y, (int) fingerScreenPoint.x + 3, 255, 255, 255, 255);
+        camImg2.put((int) fingerScreenPoint.y - 1, (int) fingerScreenPoint.x + 3, 255, 255, 255, 255);
+        camImg2.put((int) fingerScreenPoint.y + 1, (int) fingerScreenPoint.x + 3, 255, 255, 255, 255);
+
+        camImg2.put((int) fingerScreenPoint.y + 4, (int) fingerScreenPoint.x, 255, 255, 255, 255);
+        camImg2.put((int) fingerScreenPoint.y - 4, (int) fingerScreenPoint.x, 255, 255, 255, 255);
+        camImg2.put((int) fingerScreenPoint.y, (int) fingerScreenPoint.x + 4, 255, 255, 255, 255);
+        camImg2.put((int) fingerScreenPoint.y, (int) fingerScreenPoint.x - 4, 255, 255, 255, 255);
+        return camImg2;
     }
 
     private double[] FindPixelValue(Mat mat, Vector3 pos)
@@ -150,15 +198,14 @@ public class FingerDrawing : MonoBehaviour
         return mat.get((int) ScreenPoint.y, (int) ScreenPoint.x);
     }
 
-    private Vector3 FingerPointInWorldSpace(Mat fingerColorMat)
+    private Vector3 FingerPointInWorldSpace(Vector3 fingerTip)
     {
-        var fingerTip = FindFingerTip(fingerColorMat);
         var screenToWorldPoint = Cam.ScreenToWorldPoint(fingerTip);
         screenToWorldPoint.y = -screenToWorldPoint.y;
         return screenToWorldPoint;
     }
 
-    private Mat FindFingerColor()
+    private Mat GetBWSkinColor()
     {
         var frameHsv = new Mat();
         // Convert from BGR to HSV colorspace
