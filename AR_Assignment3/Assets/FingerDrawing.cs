@@ -21,7 +21,7 @@ public class FingerDrawing : MonoBehaviour
     public Transform FingerPlane;
     public Transform FingerPointTarget;
 
-    private Mat _texture;
+    private Mat _drawingPlaceMat;
     private MatOfPoint2f _imagePoints;
 
 
@@ -29,9 +29,10 @@ public class FingerDrawing : MonoBehaviour
     void Start()
     {
         //Anders magic number
-        _texture = new Mat(Cam.pixelHeight,Cam.pixelWidth,CvType.CV_8UC4);
-        _texture.setTo(new Scalar(100, 200, 0));
-        //_texture = MatDisplay.LoadRGBATexture("muscle_tex.png");
+        //_drawingPlaceMat = new Mat(Cam.pixelHeight,Cam.pixelWidth,CvType.CV_8UC4);
+        _drawingPlaceMat = new Mat(100, 150, CvType.CV_8UC4);
+        _drawingPlaceMat.setTo(new Scalar(100, 200, 0));
+        //_drawingPlaceMat = MatDisplay.LoadRGBATexture("muscle_tex.png");
         _imagePoints = new MatOfPoint2f();
         _imagePoints.alloc(4);
     }
@@ -75,9 +76,9 @@ public class FingerDrawing : MonoBehaviour
         };
         var dstPoints = new List<Point>
         {
-            new Point(0, _texture.height()),
-            new Point(_texture.width(), _texture.height()),
-            new Point(_texture.width(), 0),
+            new Point(0, _drawingPlaceMat.height()),
+            new Point(_drawingPlaceMat.width(), _drawingPlaceMat.height()),
+            new Point(_drawingPlaceMat.width(), 0),
             new Point(0, 0),
         };
 
@@ -100,20 +101,31 @@ public class FingerDrawing : MonoBehaviour
                 Debug.Log($"{colorPixelValue[0]}, {colorPixelValue[1]}, {colorPixelValue[2]}");
                 Debug.Log("Found Draw");
                 //draw at finger pos
+                
                 var fingerScreenPoint = Cam.WorldToScreenPoint(fingerPointInWorldSpace);
-                fingerScreenPoint.x = Cam.pixelWidth - fingerScreenPoint.x;
-                //_texture.put((int)fingerScreenPoint.x, (int)fingerScreenPoint.y, colorPixelValue);
-                var mask = new Mat(_cameraImageMat.size(), CvType.CV_8U);
-                mask.setTo(new Scalar(0));
-                mask.put((int)fingerScreenPoint.y+1, (int)fingerScreenPoint.x, 1);
-                mask.put((int)fingerScreenPoint.y+2, (int)fingerScreenPoint.x, 1);
-                mask.put((int)fingerScreenPoint.y+3, (int)fingerScreenPoint.x, 1);
-                mask.put((int)fingerScreenPoint.y, (int)fingerScreenPoint.x, 1);
-                mask.put((int)fingerScreenPoint.y+4, (int)fingerScreenPoint.x, 1);
-                mask.put((int)fingerScreenPoint.y, (int)fingerScreenPoint.x+1, 1);
-                mask.put((int)fingerScreenPoint.y+1, (int)fingerScreenPoint.x+1, 1);
-                mask.put((int)fingerScreenPoint.y+2, (int)fingerScreenPoint.x+1, 1);
-                _texture.setTo(new Scalar(colorPixelValue[0], colorPixelValue[1], colorPixelValue[2], 255), mask);
+                fingerScreenPoint.y = Cam.pixelHeight - fingerScreenPoint.y;
+                var camImg2 = new Mat(_cameraImageMat.size(),_cameraImageMat.type());
+                camImg2.setTo(new Scalar(0,0,0));
+                camImg2.put((int)fingerScreenPoint.y, (int)fingerScreenPoint.x, 255,255,255,255);
+                camImg2.put((int)fingerScreenPoint.y, (int)fingerScreenPoint.x+1, 255,255,255,255);
+                camImg2.put((int)fingerScreenPoint.y, (int)fingerScreenPoint.x+2, 255,255,255,255);
+                camImg2.put((int)fingerScreenPoint.y, (int)fingerScreenPoint.x+3, 255,255,255,255);
+                camImg2.put((int)fingerScreenPoint.y+1, (int)fingerScreenPoint.x, 255,255,255, 255);
+                camImg2.put((int)fingerScreenPoint.y+1, (int)fingerScreenPoint.x + 1, 255,255,255, 255);
+                camImg2.put((int)fingerScreenPoint.y+1, (int)fingerScreenPoint.x+2, 255,255,255, 255);
+                camImg2.put((int)fingerScreenPoint.y+1, (int)fingerScreenPoint.x+3, 255,255,255, 255);
+                camImg2.put((int)fingerScreenPoint.y + 2, (int)fingerScreenPoint.x,  255, 255, 255, 255);
+                camImg2.put((int)fingerScreenPoint.y+2, (int)fingerScreenPoint.x + 1, 255,255,255, 255);
+                camImg2.put((int)fingerScreenPoint.y+2, (int)fingerScreenPoint.x+2, 255,255,255, 255);
+                camImg2.put((int)fingerScreenPoint.y+2, (int)fingerScreenPoint.x+3, 255,255,255, 255);
+
+                //_drawingPlaceMat.put((int)fingerScreenPoint.x, (int)fingerScreenPoint.y, colorPixelValue);
+
+                var mask = new Mat();
+                Imgproc.warpPerspective(camImg2, mask, H, _drawingPlaceMat.size(),
+                    Imgproc.INTER_LINEAR);
+                mask.convertTo(mask, CvType.CV_8U);
+                _drawingPlaceMat.setTo(new Scalar(colorPixelValue[0], colorPixelValue[1], colorPixelValue[2], 255), mask);
             }
         }
         catch
@@ -121,7 +133,7 @@ public class FingerDrawing : MonoBehaviour
         }
         
         var warpedMat = new Mat();
-        Imgproc.warpPerspective(_texture, warpedMat, H.inv(), _cameraImageMat.size(),
+        Imgproc.warpPerspective(_drawingPlaceMat, warpedMat, H.inv(), _cameraImageMat.size(),
             Imgproc.INTER_LINEAR);
         warpedMat.convertTo(warpedMat, _cameraImageMat.type());
 
