@@ -62,25 +62,17 @@ public class FingerDrawing : MonoBehaviour
         var corner3ScreenPoint = Cam.WorldToScreenPoint(Corner3.position);
         var corner4ScreenPoint = Cam.WorldToScreenPoint(Corner4.position);
 
-        Vector2 uv1 = new Vector2(corner1ScreenPoint.x, corner1ScreenPoint.y) / corner1ScreenPoint.z;
-        Vector2 uv2 = new Vector2(corner2ScreenPoint.x, corner2ScreenPoint.y) / corner2ScreenPoint.z;
-        Vector2 uv3 = new Vector2(corner3ScreenPoint.x, corner3ScreenPoint.y) / corner3ScreenPoint.z;
-        Vector2 uv4 = new Vector2(corner4ScreenPoint.x, corner4ScreenPoint.y) / corner4ScreenPoint.z;
+        corner1ScreenPoint.y = Cam.pixelHeight - corner1ScreenPoint.y;
+        corner2ScreenPoint.y = Cam.pixelHeight - corner2ScreenPoint.y;
+        corner3ScreenPoint.y = Cam.pixelHeight - corner3ScreenPoint.y;
+        corner4ScreenPoint.y = Cam.pixelHeight - corner4ScreenPoint.y;
 
-        //Do not forget to alloc before putting values into a MatOfPoint2f (see Start() above)
-        //We need to flip the v-coordinates, see coordinate system overview
-        float maxV = cameraImage.Height - 1;
-        _imagePoints.put(0, 0, uv1.x, maxV - uv1.y);
-        _imagePoints.put(1, 0, uv2.x, maxV - uv2.y);
-        _imagePoints.put(2, 0, uv3.x, maxV - uv3.y);
-        _imagePoints.put(3, 0, uv4.x, maxV - uv4.y);
-
-        //Debug draw points using OpenCV's drawing functions
-        Point imgPnt1 = new Point(_imagePoints.get(0, 0));
-        Point imgPnt2 = new Point(_imagePoints.get(1, 0));
-        Point imgPnt3 = new Point(_imagePoints.get(2, 0));
-        Point imgPnt4 = new Point(_imagePoints.get(3, 0));
-        var srcPoints = new List<Point> { imgPnt2, imgPnt1, imgPnt4, imgPnt3 };
+        var srcPoints = new List<Point> {
+            new Point(corner2ScreenPoint.x, corner2ScreenPoint.y),
+            new Point(corner1ScreenPoint.x, corner1ScreenPoint.y),
+            new Point(corner4ScreenPoint.x, corner4ScreenPoint.y),
+            new Point(corner3ScreenPoint.x, corner3ScreenPoint.y),
+        };
         var dstPoints = new List<Point>
         {
             new Point(0, _texture.height()),
